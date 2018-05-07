@@ -1,0 +1,387 @@
+---
+title: "Supplemental Analysis - Zegarra et al. Caribbean Naturalist"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+
+```{r, message=F, warning=F, include=FALSE}
+library(shapefiles)
+library(lattice)
+library(rgeos)
+library(sp)
+library(raster)
+library(plyr)
+library(rgdal)
+library(phytools)
+library(knitr)
+library(ggplot2)
+library(png)
+library(unmarked)
+```
+
+##Monito Gecko - supplemental occupancy and abundance analysis
+
+Sphaerodactylus micropithecus (Schwartz 1977) (Sauria: Gekkonidae) is a small gecko (adult snout-vent length: 17-36 mm) that is grey with dark spotting. The geographic distribution of the species is limited to 14.5 ha Monito Island, a small limestone island 5 km NW of Mona Island in the Mona Passage which is within a protected area administered by the Commonwealth of Puerto Rico Department of Natural and Environmental Resources. Based on its single-island distribution, apparent decline from rat predation, past habitat destruction from military activities, and the risk of stochastic events on small island populations, the species was listed as Endangered by the U.S. Fish and Wildlife Service in 1982, by the Commonwealth of Puerto Rico in 1985, and by the International Union for the Conservation of Nature in 1996 (Tolson 1996). 
+
+A Recovery Plan was established in 1986 by the U.S. Fish and Wildlife Service. One of the main threats identified was depredation of geckos by invasive rats (Rattus rattus), and in 1999 the Puerto Rico DNER carried out a successful rat eradication from Monito Island (Garcia 2002).  However, until this study there had been no standardized monitoring of the gecko population, and it was not known if the gecko had benefited from the eradication of rats. 
+
+Surveys implemented in 1982 and 1984, intended to establish baseline data, were conducted during the day and indicated that the species’ distribution was mostly limited to two small regions of the island (Dodd and Ortiz 1983 in Ortiz 1983; Ortiz 1983, Hammerson 1984). However, during a visit to Monito Island in May 2014 by biologists from the U.S. Fish and Wildlife Service and Puerto Rico DNER, geckos were detected at several locations around the island and included a count of 23 geckos in one night (USFWS 2016). The Service estimates that geckos are detectable 30% of the time based on congeneric species around the Caribbean.
+
+A multi-partner effort to establish baseline data for the species, its abundance and distribution largely unknown, was undertaken in May 2016 using nocturnal surveys.
+
+First, we needed to choose how many sites to visit. We kept detection stable at 0.3 for each scenario, and we assumed that the sites were 50% occupied. 
+
+Scenario 1: Simulate data using the multinomial-Poisson model with a repeated constant-interval removal design for 40 sites for 4 primary periods - 2 days, 2 nights
+```{r}
+# Simulate data using the multinomial-Poisson model with a
+# repeated constant-interval removal design. for FOUR primary periods - 2 days, 2 nights
+n <- 40 # number of sites
+T <- 4 # number of primary periods
+J <-  2# number of secondary periods
+lam <- 3
+phi <- 0.5
+p <- 0.3
+```
+
+Create a dataset for simulation
+```{r, include=FALSE}
+### 
+#set.seed(26)
+y <- array(NA, c(n, T, J))
+M <- rpois(n, lam) # Local population size
+N <- matrix(NA, n, T) # Individuals available for detection
+for(i in 1:n) {
+N[i,] <- rbinom(T, M[i], phi)
+y[i,,1] <- rbinom(T, N[i,], p) # Observe some
+Nleft1 <- N[i,] - y[i,,1] # Remove them
+y[i,,2] <- rbinom(T, Nleft1, p) # ...
+Nleft2 <- N[i,] - y[i,,2]
+}
+y.ijt1 <- cbind(y[,1,],y[,2,],y[,3,],y[,4,])
+head(y.ijt1)
+str(y.ijt1)
+## Make a dataframe available for analysis
+umf1 <- unmarkedFrameGMM(y=y.ijt1, numPrimary=T, type="removal")
+#?unmarkedFrameGMM
+str(umf1)
+
+```
+
+```{r]}
+head(umf1)
+
+```
+
+
+Run null model
+```{r, echo=FALSE}
+
+### Run model with null covariates
+(m1 <- gmultmix(~1, ~1, ~1, data=umf1, K=50))
+```
+
+```{r, include=FALSE}
+
+### Get numbers
+backTransform(m1, type="lambda") # Individuals per plot
+backTransform(m1, type="phi") # Probability of being avilable
+(p1 <- backTransform(m1, type="det")) # Probability of detection
+p1 <- coef(p1)
+# Multinomial cell probabilities under removal design
+c(p1, (1-p1) * p1, (1-p1)^2 * p1)
+# Or more generally:
+head(getP(m1))
+
+```
+
+```{r, include=FALSE}
+# Empirical Bayes estimates of super-population size
+
+re <- ranef(m1)
+```
+
+Figure 1. Simulation for results of 8 surveys across 40 sites using empirical Bayes estimates
+```{r, echo=FALSE}
+plot(re, layout=c(10,4), xlim=c(-1,20))
+
+```
+
+
+Scenario 2 - simulate data using the multinomial-Poisson model with a repeated constant-interval removal design for 40 sites for 4 surveys over 2 nights
+```{r, include=FALSE}
+
+n2 <- 40 # number of sites
+T2 <- 2 # number of primary periods
+J2 <-  2# number of secondary periods
+lam <- 3
+phi <- 0.5
+p <- 0.3
+y2 <- array(NA, c(n2, T2, J2))
+M2 <- rpois(n2, lam) # Local population size
+N2 <- matrix(NA, n2, T2) # Individuals available for detection
+for(i in 1:n2) {
+  N2[i,] <- rbinom(T2, M2[i], phi)
+  y2[i,,1] <- rbinom(T2, N2[i,], p) # Observe some
+  N2left1 <- N2[i,] - y2[i,,1] # Remove them
+  y2[i,,2] <- rbinom(T2, N2left1, p)
+}
+y.ijt2 <- cbind(y2[,1,],y2[,2,])
+
+head(y.ijt2)
+str(y.ijt2)
+## Make a dataframe available for analysis
+umf2 <- unmarkedFrameGMM(y=y.ijt2, numPrimary=T2, type="removal")
+#?unmarkedFrameGMM
+str(umf2)
+head(umf2)
+```
+
+
+Run second sampling model scenario
+```{r}
+
+head(y.ijt2) #simulated dataset
+### Run model with null covariates
+(m2 <- gmultmix(~1, ~1, ~1, data=umf2, K=50))
+```
+
+```{r, include=FALSE}
+### Get numbers
+backTransform(m2, type="lambda") # Individuals per plot
+backTransform(m2, type="phi") # Probability of being avilable
+(p2 <- backTransform(m2, type="det")) # Probability of detection
+p2 <- coef(p2)
+# Multinomial cell probabilities under removal design
+c(p2, (1-p2) * p2, (1-p2)^2 * p2)
+# Or more generally:
+head(getP(m2))
+
+```
+
+```{r, include=FALSE}
+# Empirical Bayes estimates of super-population size
+
+re2 <- ranef(m2)
+```
+
+Figure 2. Simulation for results of 4 surveys across 40 sites using empirical Bayes estimates
+```{r, echo=FALSE}
+plot(re2, layout=c(10,4),xlim=c(-1,20))
+
+```
+
+##Fit statistics
+
+```{r pressure, echo=FALSE}
+############
+Nhat <- function(fm) {
+  N <- sum(predict(fm, type="state")$Predicted, na.rm=TRUE)
+}  
+
+chisq <- function(fm) {
+  umf <- getData(fm)
+  y <- getY(umf)
+  y[y>1] <- 1
+  sr <- fm@sitesRemoved
+  if(length(sr)>0)
+    y <- y[-sr,,drop=FALSE]
+  fv <- fitted(fm, na.rm=TRUE)
+  y[is.na(fv)] <- NA
+  sum((y-fv)^2/(fv*(1-fv)), na.rm=TRUE)
+}
+
+
+fitstats <- function(fm) {
+  observed <- getY(fm@data)
+  expected <- fitted(fm)
+  resids <- residuals(fm)
+  sse <- sum(resids^2)
+  chisq <- sum((observed - expected)^2 / expected)
+  freeTuke <- sum((sqrt(observed) - sqrt(expected))^2)
+  out <- c(SSE=sse, Chisq=chisq, freemanTukey=freeTuke)
+  return(out)
+}
+
+topModel1<-m1 #Scenario 1
+topModel2<-m2 #Scenario 2
+
+(pb.plot1 <- parboot(topModel1, chisq, nsim=100, report=1)) ##shows distribution graphic
+(pb.plot2 <- parboot(topModel2, chisq, nsim=100, report=1)) ##shows distribution graphic
+
+
+```
+Figure 3. Model fit results of 8 surveys across 40 sites
+```{r, echo=FALSE}
+##########################################
+####  Check model GOF
+##########################################
+
+plot(pb.plot1, main="Scenario 1") 
+```
+
+```{r, echo=FALSE}
+pb.plot1
+
+plot(pb.plot2, main= "Scenario 2")
+```
+Figure 4. Model fit results of 4 surveys across 40 sites
+```{r, echo=FALSE}
+pb.plot2
+
+```
+
+## Monito Gecko field surveys 
+
+Because the simulated models using both 4 and 8 surveys suggest that enough data will result to fit occupancy models using a removal design, we choose the scenario with the least amount of effort due to the difficult logistics of working on Monito Island. 
+
+Survey site selection: A total of 50 survey points were computed using a geographically random method in ArcGIS. Of these, a total of 40 survey points (10 per quadrant) were located on the island (on average ± 3 m) using a handheld GPS unit pre-programmed with the geographic coordinates of each survey point. Each 2 person team was provided with a map and GPS coordinates to all of the survey points. 
+
+Survey protocols: We organized four 2-person teams (8 persons) to complete survyes across sites. Each team was assigned 10 survey sites and was responsible for marking the survey plots, collecting habitat data, and conducting gecko surveys. Monito Island was divided into four quadrants (southwest, northwest, northeast, southeast) each of which was randomly assigned to a team. 
+
+See text for more details.
+
+```{r, include=FALSE}
+setwd("/Users/nicoleangeli/Dropbox/Academic PhD/Projects/Monito Gecko/OccupancyAnalysis")
+dataMonito<- read.csv("Survey16.csv")
+
+obsMonito<-read.csv("SurveyObs16.csv")
+
+setwd("/Users/nicoleangeli/Dropbox/Academic PhD/Projects/Monito Gecko/OccupancyAnalysis")
+covMonito<-read.csv("SurveyCov16.csv")
+names(covMonito)<-c("shrub", "herb", "ground", "leaf", "canopy")
+
+umf<-unmarkedFramePCount(y=dataMonito, siteCovs=covMonito)
+
+```
+
+Once plots were marked, each team recorded habitat covariates in each plot: % shrub cover (woody plants under 2 m tall), % herbaceous cover (grasses and sedges), % ground cover (exposed rock or soil cover), % leaf litter, and % canopy cover (trees taller than approximately 1.8 m (6 ft)). 
+
+Because we were using the habitat variables for predictive models, we tested for collinearity among each covariate across the sites. Ground cover was collinear with shrub cover (r = 0.98), and so only shrub cover was used. Add ? here
+
+The survey plots comprised 35.73 % leaf litter (Range: 5 – 90 %), 1% herbaceous material (Range: 0 – 15 %), 8.01% canopy (Range: 0 – 60 %), 35.75% ground cover (Range: 5 – 90 %), and 62.55 % shrub cover (Range: 9 – 95 %). Because ground cover and shrub cover were highly correlated, we only used shrub cover in the analysis to reduce redundancy.
+
+
+
+```{r}
+
+head(covMonito)
+cor(covMonito)
+summary(covMonito)
+```
+
+The data was formatted for analysis using each plot sample as a separate survey history. 
+```{r}
+
+summary(umf) #summary of observed dataset 
+
+```
+
+Figure 5. Results of the observed data during 2016 surveys on Monito Island. The scale marks surveys where observations ranged from zeo geckos to seven gecko individuals. A total of four surveys occurred at each site. The first two surveys occured on night 1 by independent observers. The second two surveys occured on night 2 by two different observers. If geckos were observed during either survey on night 1, the site was removed from sampling on night 2.
+```{r, echo=FALSE}
+plot(umf)
+```
+
+
+The R package ‘unmarked’ version 0.10.2 provides methods to estimate site occupancy, abundance, and density of animals that cannot be detected with certainty (Fiske and Chandler, 2011). The occupancy of the island by Monito Geckos was fit with a model described by Mackenzie et al. (2002) and implemented with the function ‘occu’ where the occupancy and detection of the observed geckos is described by a Bernoulli process. We assumed all sites were closed based on the life history and activity of the Monito Gecko.
+
+The abundance (N_ of the gecko on Monito Island was estimated using a N-mixture model with a negative binomial distribution for overdispersed data (α).  Because the species is cryptic, surveys were likely to result in many absences, and the negative binomial distribution represents a zero-inflated dataset (Johnson et al., 1992). Multiple models were fit with each combination of covariates was fit using the function ‘pcount’ (Royle 2004; Kéry et al. 2005) according to the equation) where the mean of the negative binomial distribution is  and and the covariates describing the abundance and detection  were transformed with a logit link.
+
+```{r, include=FALSE}
+umf
+MonitoNull<-pcount(~1 ~1, umf, mixture="NB", K=120)
+
+
+e<-coef(MonitoNull)
+plogis(e[1])
+plogis(e[2:3])
+
+re<-ranef(MonitoNull, K=120)
+# Backtransform results to original scale
+
+coef(MonitoNull) 						# Logit scale
+
+estsO <- plogis(coef(MonitoNull))		# Original scale
+
+# Same as above but with standard error
+
+(psiSEO <- backTransform(MonitoNull, type="state")) 
+(pSEO <- backTransform(MonitoNull, type="det"))
+
+# How about confidence intervals?
+
+(ciPsiO <- confint(psiSEO))
+(ciPO <- confint(pSEO))
+
+##with cov
+
+MonitoCov<-pcount(~leaf+herb~1+canopy+leaf+herb, umf, mixture="NB")
+
+
+```
+
+
+
+Occupancy of the geckos on Monito Island was 27.8 % (CI: 11.3 – 68.6 %). The mean number of geckos per 400 m2 plot from the abundance model was 73.3 geckos (Range: 1 – 101; Table 5). The ‘true’ abundance from the model per plot indicates a total of 1,112 geckos present within the 40 surveyed plots in Monito Island (95% CI: 362 – 2,281). Interpolated across the entire island (14.5 ha), Monito Island hosts approximately 7,661 geckos (50% CI: 5,344 – 10,590). The interpolated zones represent the approximate number of geckos at any randomly selected 30 m2 area. See text for more details.
+```{r, echo=FALSE}
+# Put results in table for export
+umf
+MonitoNull
+MonitoCov
+
+```
+
+
+To test the fit of the best ranked models the data well, a parametric bootstrap sampling from the function ‘parboot’ was used. The function ‘parboot’ uses the model object previously fitted in ‘pcount’ to refit the model iteratively and test for goodness-of-fit (GOF). We specified a Bayesian posterior test of the latent abundance which allows us to compare the modeled abundance to distributions simulated from the fit model. The bootstrap P value for the models was run 1,000 times; a non-significant value (P > 0.05) suggests the model estimate has an appropriate GOF. The final model was examined to find the abundance (N) and detection for each site. Using AIC, we assumed that the most simple model will have a mathematically convergent solution.
+
+```{r, include=FALSE}
+(P.Null.Mon <- parboot(MonitoNull,Nhat, nsim=100, report=5)) ##shows distribution graphic
+plot(P.Null.Mon)  ##shows distribution graphic
+
+(P.Cov.Mon <- parboot(MonitoCov,Nhat, nsim=100, report=5)) ##shows distribution graphic
+plot(P.Cov.Mon)  ##shows distribution graphic
+
+```
+
+Figure 6. Model fit results without covariates
+```{r, echo=FALSE}
+##########################################
+####  Check model GOF
+##########################################
+
+plot(P.Null.Mon, main="Monito Gecko Model without Covariates") 
+```
+
+```{r, echo=FALSE}
+P.Null.Mon
+```
+
+Figure 7. Model fit results with covariates
+```{r}
+plot(P.Cov.Mon, main= "Monito Gecko Model with Covariates")
+```
+Figure 7. Model fit results with covariates
+```{r, echo=FALSE}
+P.Cov.Mon
+
+```
+
+
+The Monito gecko is distributed across at least one quarter of Monito Island based on the final occupancy results. The modeled population estimates reveal 7,661 geckos (50% CI: 5,344 – 10,590) across the entire island (Table 6). The density of 19 geckos per sq. m of the species is in fact lower than the 134 – 528 geckos per sq. m observed in removal plots of the congeneric species Sphaerodactylus macrolepis in the Virgin Islands (Rodda et al., 2001). Habitat covariates recorded could not explain the differences in gecko detection or abundance across plots.
+
+Detection and occupancy estimates from the best model - Monito Null
+```{r, echo=FALSE}
+resultsTableO <- rbind(psi = c(psiSEO@estimate, ciPsiO), p = (c(estsO[2], ciPO)*100))
+colnames(resultsTableO) <- c("Estimate", "lowerCI", "upperCI")
+resultsTableO
+```
+
+
+The final model estimates for each site were used as a dataset to fit a geographic linear interpolation across the 14.5 ha island using a 30 m2 grid based on the pixel size of the GIS data. The overall method was developed for use with terrestrial low-detection species and previously peer-reviewed (Angeli et al. 2017, Fitzgerald et al. 2015). We assumed that the distribution and abundance between sites was representated accurately by our surveys. See text for associated figures.
+
+Future efforts could incorporate new and different covariates to better measure the gecko’s habitat preference, and in particular the micro-habitats influenced by substrate temperature, moisture, pH, soil type, and topography, invertebrate prey diversity and abundance, and seabird presence. To enable direct comparison to the baseline established here and to maximize detectability, we recommend that this sampling protocol is repeated for future surveys, and conducted at the same time of year and during the night when geckos were easy to detect. The sampling methodology used here proved achievable within a short timeframe (two nights) but required a relatively large field team (eight persons). If fewer observers were available, we recommend an increased number of sample nights in order to survey a minimum of 40 plots. Given the low detection probability of this species (1-8%), we recommend the use of mathematical models to account for detection bias, preferably the same technique developed in this report.
+
+
+
+
